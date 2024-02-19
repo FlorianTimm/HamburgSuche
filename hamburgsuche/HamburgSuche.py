@@ -21,11 +21,9 @@
  *                                                                         *
  ***************************************************************************/
 """
-import requests
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QPoint
-from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QTreeWidget, QTreeWidgetItem
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QTimer
+from qgis.PyQt.QtGui import QIcon, QStandardItemModel, QStandardItem
+from qgis.PyQt.QtWidgets import QCompleter, QAction
 # Initialize Qt resources from file resources.py
 from .resources import *
 from qgis.core import Qgis, QgsGeometry, QgsPointXY, QgsCoordinateReferenceSystem, QgsCoordinateTransform, QgsProject
@@ -74,27 +72,7 @@ class HamburgSuche:
         self.networkManager = QNetworkAccessManager()
         self.networkManager.finished.connect(self.handleResult)
 
-        self.popup = QTreeWidget()
-        # self.popup.setColumnCount(2)
-        self.popup.setColumnCount(1)
-        self.popup.setUniformRowHeights(True)
-        self.popup.setRootIsDecorated(False)
-        self.popup.setEditTriggers(QTreeWidget.NoEditTriggers)
-        self.popup.setSelectionBehavior(QTreeWidget.SelectRows)
-        #self.popup.setFrameStyle(QFrame.Box | QFrame.Plain)
-        self.popup.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-
-        self.popup.header().hide()
-        # self.popup.installEventFilter(self)
-        self.popup.setMouseTracking(True)
-
-        self.popup.itemClicked.connect(self.doneCompletion)
-
-        self.popup.setWindowFlags(Qt.Popup)
-        self.popup.setFocusPolicy(Qt.NoFocus)
-        #self.popup.setFocusProxy(self.iface)
-
-           # print "** STARTING HamburgSuche"
+        # print "** STARTING HamburgSuche"
 
         self.dockwidget = HamburgSucheDockWidget()
 
@@ -102,31 +80,30 @@ class HamburgSuche:
 
         self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dockwidget)
         self.dockwidget.show()
+
+        self.completer = QCompleter(["Suche..."])
+        self.completer.setCaseSensitivity(Qt.CaseInsensitive)
+        self.completer.setFilterMode(Qt.MatchContains)
+        self.completer.setCompletionMode(QCompleter.PopupCompletion)
+        # self.completer.setWrapAround(False)
+        # self.completer.setWidget(self.dockwidget.searchBar)
+
+        self.completer.highlighted.connect(self.doneCompletion)
+        self.completer.activated.connect(self.onActivated)
+
         self.dockwidget.searchBar.returnPressed.connect(self.suche)
+        self.dockwidget.searchBar.textChanged.connect(self.suche)
+        self.dockwidget.searchBar.setCompleter(self.completer)
+
+        self.treffer = False
 
         if QgsCoordinateReferenceSystem is not None:
-            srcCrs = QgsCoordinateReferenceSystem(
-                25832, QgsCoordinateReferenceSystem.EpsgCrsId
-            )
+            srcCrs = QgsCoordinateReferenceSystem("EPSG:25832")
             dstCrs = iface.mapCanvas().mapSettings().destinationCrs()
             self.crsTransform = QgsCoordinateTransform(
                 srcCrs, dstCrs, QgsProject.instance())
 
     # noinspection PyMethodMayBeStatic
-
-    def tr(self, message):
-        """Get the translation for a string using Qt translation API.
-
-        We implement this ourselves since we do not inherit QObject.
-
-        :param message: String for translation.
-        :type message: str, QString
-
-        :returns: Translated version of message.
-        :rtype: QString
-        """
-        # noinspection PyTypeChecker,PyArgumentList,PyCallByClass
-        return QCoreApplication.translate('HamburgSuche', message)
 
     def add_action(
             self,
@@ -204,7 +181,6 @@ class HamburgSuche:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
 
-
     # --------------------------------------------------------------------------
 
     def onClosePlugin(self):
@@ -228,12 +204,10 @@ class HamburgSuche:
 
         # print "** UNLOAD HamburgSuche"
 
-
     # --------------------------------------------------------------------------
 
     def run(self):
         """Run method that loads and starts the plugin"""
-
 
     def suche(self):
         """Sucht..."""
@@ -241,66 +215,56 @@ class HamburgSuche:
         if len(self.dockwidget.searchBar.text()) < 3:
             return
 
-        # self.iface.messageBar().pushMessage(self.tr('Suche: {}').format(
+        if self.treffer:
+            self.treffer = False
+            return
+
+        # self.iface.messageBar().pushMessage('Suche: {}'.format(
         #    self.dockwidget.searchBar.text()), Qgis.Info)
 
-        qurl = "https://geoportal-hamburg.de/geodienste_hamburg_de/HH_WFS_DOG?service=WFS&request=GetFeature&version=2.0.0&StoredQuery_ID=findeStrasse&strassenname=" + self.dockwidget.searchBar.text()
+        qurl = "https://geoportal-hamburg.de/geodienste_hamburg_de/HH_WFS_DOG?service=WFS&request=GetFeature&version=2.0.0&StoredQuery_ID=findeStrasse&strassenname=" + \
+            self.dockwidget.searchBar.text()
 
         self.networkManager.get(QNetworkRequest(QUrl(qurl)))
 
     def handleResult(self, result):
 
-        self.popup.setUpdatesEnabled(False)
-        self.popup.clear()
-
         # print "received url:", url.toString()
-        if not result.error():
-            response = result.readAll()
-            pystring = str(response, 'utf-8')
-            tree = ElementTree.fromstring(pystring)
-            liste = tree.findall('wfs:member', namespaces={
-                                 'wfs': 'http://www.opengis.net/wfs/2.0'})
-            for eintrag in liste:
-                strasse = eintrag.find('dog:Strassen', namespaces={
-                                       'dog': "http://www.adv-online.de/namespaces/adv/dog"})
-                sname = strasse.find('dog:strassenname', namespaces={
-                                     'dog': "http://www.adv-online.de/namespaces/adv/dog"})
+        if result.error():
+            return
 
-                coord = strasse.find('iso19112:position_strassenachse', namespaces={'iso19112': 'http://www.opengis.net/iso19112'}).find('gml:Point', namespaces={
-                    'gml': "http://www.opengis.net/gml/3.2"}).find('gml:pos', namespaces={'gml': "http://www.opengis.net/gml/3.2"}).text.split(' ')
+        response = result.readAll()
+        pystring = str(response, 'utf-8')
+        tree = ElementTree.fromstring(pystring)
+        liste = tree.findall('wfs:member', namespaces={
+            'wfs': 'http://www.opengis.net/wfs/2.0'})
+        if len(liste) == 0:
+            self.iface.messageBar().pushMessage('Kein Treffer: {}'.format(
+                self.dockwidget.searchBar.text()), Qgis.Info)
+            return
+        model = QStandardItemModel()
+        for eintrag in liste:
+            strasse = eintrag.find('dog:Strassen', namespaces={
+                'dog': "http://www.adv-online.de/namespaces/adv/dog"})
+            sname = strasse.find('dog:strassenname', namespaces={
+                'dog': "http://www.adv-online.de/namespaces/adv/dog"})
 
-                item = QTreeWidgetItem(self.popup)
-                item.setText(0, sname.text)
-                item.setText(1, 'Strasse')
-                item.setTextAlignment(1, Qt.AlignRight)
-                # item.setForeground(1, color)
-                item.setData(2, Qt.UserRole, (coord))
+            coord = strasse.find('iso19112:position_strassenachse', namespaces={'iso19112': 'http://www.opengis.net/iso19112'}).find('gml:Point', namespaces={
+                'gml': "http://www.opengis.net/gml/3.2"}).find('gml:pos', namespaces={'gml': "http://www.opengis.net/gml/3.2"}).text.split(' ')
 
+            item = QStandardItem(sname.text)
+            item.setData(coord, Qt.UserRole+1)
+            model.appendRow(item)
         result.deleteLater()
+        self.completer.setModel(model)
+        self.completer.complete()
 
-        self.popup.setCurrentItem(self.popup.topLevelItem(0))
-        self.popup.resizeColumnToContents(0)
-        # self.popup.resizeColumnToContents(1)
-        self.popup.adjustSize()
-        self.popup.setUpdatesEnabled(True)
-
-        # h = self.popup.sizeHintForRow(0) * min(15, len(rows)) + 3
-        # w = max(self.popup.width(), self.editor.width())
-        # self.popup.resize(w, h)
-
-        self.popup.move(self.dockwidget.searchBar.mapToGlobal(
-            QPoint(0, self.dockwidget.searchBar.height())))
-        self.popup.setFocus()
-        self.popup.show()
-
-    def doneCompletion(self):
-        # self.timer.stop()
-        self.popup.hide()
-        # self.editor.setFocus()
-        item = self.popup.currentItem()
-        if item:
-            self.dockwidget.searchBar.setText(item.text(0))
-            coord = item.data(2, Qt.UserRole)
+    def doneCompletion(self, text):
+        # self.iface.messageBar().pushMessage('Something selected' + text, Qgis.Info)
+        items = self.completer.model().findItems(text)
+        if len(items) > 0:
+            item = items[0]
+            coord = item.data(Qt.UserRole+1)
             # self.iface.messageBar().pushMessage(
             #    self.tr('Suche: {}').format(coord), Qgis.Info)
 
@@ -318,10 +282,8 @@ class HamburgSuche:
             # self.setMarkerGeom(geom)
 
             canvas.refresh()
+            self.completer.popup().hide()
+            self.treffer = True
 
-# obj =  item.data(2, Qt.UserRole) #.toPyObject()
-# self.selectedObject = obj[0]
-# e = QKeyEvent(QEvent.KeyPress, Qt.Key_Enter, Qt.NoModifier)
-# QApplication.postEvent(self.editor, e)
-# e = QKeyEvent(QEvent.KeyRelease, Qt.Key_Enter, Qt.NoModifier)
-# QApplication.postEvent(self.editor, e)
+    def onActivated(self):
+        QTimer.singleShot(0, self.dockwidget.searchBar.clear)

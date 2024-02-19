@@ -6,7 +6,7 @@
 name=HamburgSuche
 qgisMinimumVersion=3.0
 description=Sucht Straßennamen
-version=0.1
+version=0.2
 author=LGV Hamburg
 email=florian.timm@gv.hamburg.de
 
