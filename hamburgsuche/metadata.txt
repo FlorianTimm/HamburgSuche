@@ -6,14 +6,14 @@
 name=HamburgSuche
 qgisMinimumVersion=3.0
 description=Sucht Straßennamen
-version=0.2
+version=0.2.1
 author=LGV Hamburg
 email=florian.timm@gv.hamburg.de
 
 about=Suche aus dem Geoportal für QGIS
 
-tracker=http://bugs
-repository=http://repo
+tracker=https://github.com/FlorianTimm/HamburgSuche/issues
+repository=https://github.com/FlorianTimm/HamburgSuche
 # End of mandatory metadata
 
 # Recommended items:
@@ -25,7 +25,7 @@ hasProcessingProvider=no
 # Tags are comma separated with spaces allowed
 tags=python
 
-homepage=http://homepage
+homepage=https://github.com/FlorianTimm/HamburgSuche
 category=Web
 icon=icon.png
 # experimental flag

@@ -21,6 +21,7 @@
  *                                                                         *
  ***************************************************************************/
 """
+from turtle import update
 from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt, QTimer
 from qgis.PyQt.QtGui import QIcon, QStandardItemModel, QStandardItem
 from qgis.PyQt.QtWidgets import QCompleter, QAction
@@ -97,11 +98,7 @@ class HamburgSuche:
 
         self.treffer = False
 
-        if QgsCoordinateReferenceSystem is not None:
-            srcCrs = QgsCoordinateReferenceSystem("EPSG:25832")
-            dstCrs = iface.mapCanvas().mapSettings().destinationCrs()
-            self.crsTransform = QgsCoordinateTransform(
-                srcCrs, dstCrs, QgsProject.instance())
+        self.updateCRS()
 
     # noinspection PyMethodMayBeStatic
 
@@ -259,8 +256,18 @@ class HamburgSuche:
         self.completer.setModel(model)
         self.completer.complete()
 
+    def updateCRS(self):
+        if QgsCoordinateReferenceSystem is not None:
+            srcCrs = QgsCoordinateReferenceSystem("EPSG:25832")
+            dstCrs = self.iface.mapCanvas().mapSettings().destinationCrs()
+            self.crsTransform = QgsCoordinateTransform(
+                srcCrs, dstCrs, QgsProject.instance())
+
     def doneCompletion(self, text):
         # self.iface.messageBar().pushMessage('Something selected' + text, Qgis.Info)
+        
+        self.updateCRS()
+
         items = self.completer.model().findItems(text)
         if len(items) > 0:
             item = items[0]
